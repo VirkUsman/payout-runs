@@ -1,0 +1,67 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      CELERY_BROKER_URL: redis://127.0.0.1:6379/0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.12'
+
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - name: Migrations match the models
+        run: uv run python manage.py makemigrations --check --dry-run
+      - run: uv run pytest --create-db
+
+      # A key that changes between attempts is how a retry becomes a second
+      # payment, so confirm the tests notice.
+      - name: The double payment test can fail
+        run: |
+          sed -i 's/{self.key_generation}"/{self.key_generation}-{self.attempts}"/' payouts/models.py
+          git diff --exit-code --quiet payouts/models.py && { echo "the edit did not apply"; exit 1; }
+          if uv run pytest tests/test_sending.py::test_answer_lost_after_the_bank_applied_it; then
+            echo "a key that changes per attempt passed the suite, so the test checks nothing"
+            exit 1
+          fi
+          git checkout payouts/models.py
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose up --build --detach --wait --wait-timeout 180
+      - name: The API answers and wants a token
+        run: |
+          code=$(curl --silent --output /dev/null --write-out '%{http_code}' \
+            --retry 30 --retry-delay 2 --retry-all-errors http://localhost:8000/api/runs/)
+          test "$code" = "401"
+      - if: failure()
+        run: docker compose logs --tail 60
