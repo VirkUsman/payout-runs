@@ -30,11 +30,17 @@ class Sale(models.Model):
             ),
         ]
 
+    def __str__(self):
+        return f"{self.amount_cents} on {self.earned_on}"
+
 
 class Run(models.Model):
     period_end = models.DateField(unique=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
     created_at = models.DateTimeField(default=timezone.now)
+
+    def __str__(self):
+        return f"run ending {self.period_end}"
 
 
 class Payout(models.Model):
@@ -76,6 +82,9 @@ class Payout(models.Model):
                 name="payout_open_idx",
             ),
         ]
+
+    def __str__(self):
+        return f"payout {self.pk} ({self.status})"
 
     @property
     def idempotency_key(self) -> str:

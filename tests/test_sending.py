@@ -22,9 +22,7 @@ def payout(staff, queued, bank):
 
 
 def expire_lease(payout):
-    Payout.objects.filter(pk=payout.pk).update(
-        lease_until=timezone.now() - dt.timedelta(seconds=1)
-    )
+    Payout.objects.filter(pk=payout.pk).update(lease_until=timezone.now() - dt.timedelta(seconds=1))
 
 
 def make_due(payout):

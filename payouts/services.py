@@ -1,7 +1,6 @@
 import random
 from collections import defaultdict
 from datetime import date, timedelta
-from functools import partial
 
 from django.conf import settings
 from django.db import IntegrityError, transaction
@@ -23,6 +22,19 @@ class NotRetryable(Exception):
     pass
 
 
+def _queue_after_commit(payout_id: int) -> None:
+    # robust, so a broker failure on one message cannot stop the rest. Whatever
+    # does not get queued here, the reaper finds.
+    #
+    # A named function and not functools.partial: when a robust callback
+    # raises, Django logs func.__qualname__, a partial has none, and the
+    # AttributeError escapes the very handler that was meant to contain it.
+    def send() -> None:
+        queue.enqueue_send(payout_id)
+
+    transaction.on_commit(send, robust=True)
+
+
 def create_run(period_end: date, user) -> tuple[Run, bool]:
     """Turn every unpaid sale up to period_end into one payout per seller."""
     try:
@@ -30,9 +42,7 @@ def create_run(period_end: date, user) -> tuple[Run, bool]:
             run = Run.objects.create(period_end=period_end, created_by=user)
             payouts = _collect_sales(run)
             for payout in payouts:
-                # robust, so a broker failure on one message cannot stop the
-                # rest. Whatever does not get queued here, the reaper finds.
-                transaction.on_commit(partial(queue.enqueue_send, payout.pk), robust=True)
+                _queue_after_commit(payout.pk)
     except IntegrityError:
         existing = Run.objects.filter(period_end=period_end).first()
         if existing is None:
@@ -185,5 +195,5 @@ def retry_failed(payout_id: int) -> Payout:
         payout.attempts = 0
         payout.next_attempt_at = timezone.now()
         payout.save()
-        transaction.on_commit(partial(queue.enqueue_send, payout.pk), robust=True)
+        _queue_after_commit(payout.pk)
     return payout

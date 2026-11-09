@@ -28,7 +28,9 @@ def bank(settings):
 def queued(monkeypatch):
     """Replace the broker with a list. The end to end tests use the real one."""
     sent: list[tuple[int, float | None]] = []
-    monkeypatch.setattr(queue, "enqueue_send", lambda pk, countdown=None: sent.append((pk, countdown)))
+    monkeypatch.setattr(
+        queue, "enqueue_send", lambda pk, countdown=None: sent.append((pk, countdown))
+    )
     return sent
 
 

@@ -18,8 +18,16 @@ class PayoutSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Payout
-        fields = ["id", "run", "seller", "amount_cents", "status", "failure", "attempts",
-                  "bank_ref"]
+        fields = [
+            "id",
+            "run",
+            "seller",
+            "amount_cents",
+            "status",
+            "failure",
+            "attempts",
+            "bank_ref",
+        ]
 
 
 class RunSerializer(serializers.ModelSerializer):
